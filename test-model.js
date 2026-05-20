@@ -1,4 +1,12 @@
 import { readFileSync } from 'fs';
+import { run, bench, group } from 'mitata';
+import { randomBytes } from 'crypto';
+
+export function random(length = 10) {
+  return randomBytes(Math.ceil(length / 2))
+    .toString('hex')
+    .slice(0, length);
+}
 
 const { transitions, starts } = JSON.parse(readFileSync('src/utils/name_model.json', 'utf-8'))
 
@@ -32,6 +40,20 @@ function generate(type, minLen = 5, maxLen = 9) {
 	throw new Error('failed to generate name')
 }
 
-const given = generate('given') + (Math.random() < 0.5 ? '' : `.${generate('given')}`)
-const surname = generate('surname') + (Math.random() < 0.5 ? '' : `-${generate('surname')}`)
-console.log(`${given}.${surname}`)
+function nameish() {
+  const given = generate('given') + (Math.random() < 0.5 ? '' : `.${generate('given')}`)
+  const surname = generate('surname') + (Math.random() < 0.5 ? '' : `-${generate('surname')}`)
+  return `${given}.${surname}`
+}
+
+group('Array Transformation', () => {
+  bench('nameish', () => {
+    nameish()
+  });
+
+  bench('random', () => {
+    random();
+  });
+});
+
+await run()
