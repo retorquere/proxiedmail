@@ -2,11 +2,13 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocaleStore, type SupportedLocale } from '../stores/locale'
+import { usePasswordManagerStore } from '../stores/password-manager'
 import { useThemeStore } from '../stores/theme'
 
 const emit = defineEmits<{ (e: 'signout'): void }>()
 const { t } = useI18n()
 const localeStore = useLocaleStore()
+const passwordManagerStore = usePasswordManagerStore()
 const themeStore = useThemeStore()
 const open = ref(false)
 
@@ -91,6 +93,15 @@ function onBlur(e: FocusEvent) {
       >
         {{ lang.label }}
       </button>
+      <hr class="dropdown-divider" />
+      <label class="toggle-option" role="menuitemcheckbox" :aria-checked="passwordManagerStore.enabled">
+        <span>{{ t('settings.passwordManager') }}</span>
+        <input
+          :checked="passwordManagerStore.enabled"
+          type="checkbox"
+          @change="passwordManagerStore.setEnabled(($event.target as HTMLInputElement).checked)"
+        />
+      </label>
       <hr class="dropdown-divider" />
       <button class="signout-option" role="menuitem" @click="signout">
         {{ t('home.signOut') }}
@@ -223,6 +234,26 @@ function onBlur(e: FocusEvent) {
   background: #4f46e5;
   color: #fff;
   opacity: 1;
+}
+
+.toggle-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.toggle-option:hover {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+.toggle-option input {
+  margin: 0;
 }
 
 .signout-option {

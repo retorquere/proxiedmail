@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { Check, Copy } from '@lucide/vue'
+import { Check, Copy, ExternalLink, Eye, EyeOff, Plus, RefreshCw, Save, X } from '@lucide/vue'
 import type { ProxyBinding, ProxyBindingContact, RealAddress } from '../types/proxy-binding'
+import { usePasswordManagerStore } from '../stores/password-manager'
 import { apiFetch } from '../utils/api'
 import { makeLocalPart } from '../utils/generate'
 
@@ -14,6 +15,7 @@ const emit = defineEmits<
 >()
 
 const { t } = useI18n()
+const passwordManagerStore = usePasswordManagerStore()
 
 const isEdit = !!props.binding?.id
 
@@ -41,13 +43,30 @@ const newContactEmail = ref('')
 const newContactDescription = ref('')
 const pendingContacts = ref<Array<{ email: string; description: string }>>([])
 const copiedContactId = ref<string | null>(null)
+const copiedPassword = ref(false)
+const passwordManagerLoading = ref(false)
+const passwordManagerError = ref<string | null>(null)
+const passwordDataLoadedFor = ref<string | null>(null)
 
 const password = ref('')
+const websiteUrl = ref('')
 const pwLength = ref(16)
 const pwLetters = ref(true)
 const pwNumbers = ref(true)
 const pwSymbols = ref(true)
 const showPassword = ref(false)
+
+const passwordManagerEnabled = computed(() => passwordManagerStore.enabled)
+
+function normalizeWebsiteUrl(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)) return trimmed
+  if (/^[a-z\d.-]+(?::\d+)?(?:[/?#]|$)/i.test(trimmed)) return `https://${trimmed}`
+  return trimmed
+}
+
+const websiteHref = computed(() => normalizeWebsiteUrl(websiteUrl.value))
 
 function generatePassword() {
   const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -84,6 +103,86 @@ async function copyContactEmail(c: ProxyBindingContact) {
   }
   copiedContactId.value = c.id
   setTimeout(() => { copiedContactId.value = null }, 1500)
+}
+
+async function copyPassword() {
+  if (!password.value) return
+  try {
+    await navigator.clipboard.writeText(password.value)
+  }
+  catch {
+    return
+  }
+  copiedPassword.value = true
+  setTimeout(() => {
+    copiedPassword.value = false
+  }, 1500)
+}
+
+function openWebsite() {
+  if (!websiteHref.value) return
+  window.open(websiteHref.value, '_blank', 'noopener,noreferrer')
+}
+
+async function fetchPasswordManagerData() {
+  const bindingId = props.binding?.id
+  if (!bindingId || !passwordManagerEnabled.value || passwordDataLoadedFor.value === bindingId) {
+    return
+  }
+
+  passwordManagerLoading.value = true
+  passwordManagerError.value = null
+  try {
+    const token = localStorage.getItem('api_token') ?? ''
+    const [passwordRes, usedOnRes] = await Promise.all([
+      apiFetch('/gapi/passwords', { headers: { Token: token } }),
+      apiFetch('/gapi/used-on', { headers: { Token: token } }),
+    ])
+
+    if (!passwordRes.ok || !usedOnRes.ok) {
+      throw new Error(t('form.errorFetchPasswordManager'))
+    }
+
+    const passwords: Array<{ related_to_id?: string; password?: string }> = await passwordRes.json()
+    const usedOnEntries: Array<{ proxy_binding_id?: string; list?: string[] }> = await usedOnRes.json()
+
+    password.value = passwords.find(entry => entry.related_to_id === bindingId)?.password ?? ''
+    websiteUrl.value = usedOnEntries.find(entry => entry.proxy_binding_id === bindingId)?.list?.[0] ?? ''
+    passwordDataLoadedFor.value = bindingId
+  }
+  catch (e) {
+    passwordManagerError.value = e instanceof Error ? e.message : String(e)
+  }
+  finally {
+    passwordManagerLoading.value = false
+  }
+}
+
+async function saveWebsite(bindingId: string, headers: Record<string, string>) {
+  const normalizedWebsiteUrl = normalizeWebsiteUrl(websiteUrl.value)
+  websiteUrl.value = normalizedWebsiteUrl
+
+  const res = await apiFetch('/gapi/used-on', {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({
+      proxy_binding_id: bindingId,
+      list: normalizedWebsiteUrl ? [normalizedWebsiteUrl] : [],
+    }),
+  })
+  if (!res.ok) throw new Error(t('form.errorSaveWebsite'))
+}
+
+async function savePassword(bindingId: string, headers: Record<string, string>) {
+  const pwRes = await apiFetch('/gapi/passwords/proxy-binding', {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({
+      proxy_binding_id: bindingId,
+      password: password.value,
+    }),
+  })
+  if (!pwRes.ok) throw new Error(t('form.errorSavePassword'))
 }
 
 async function fetchContacts() {
@@ -149,13 +248,26 @@ watch(
     pendingContacts.value = []
     contactsError.value = null
     password.value = ''
+    websiteUrl.value = ''
     showPassword.value = false
+    copiedPassword.value = false
+    passwordManagerError.value = null
+    passwordDataLoadedFor.value = null
     if (b?.id) fetchContacts()
   },
 )
 
+watch(
+  () => [props.binding?.id, passwordManagerEnabled.value] as const,
+  ([bindingId, enabled]) => {
+    if (bindingId && enabled) fetchPasswordManagerData()
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   if (isEdit) fetchContacts()
+  if (isEdit && passwordManagerEnabled.value) fetchPasswordManagerData()
 })
 
 function selectAddress(addr: string) {
@@ -240,6 +352,10 @@ async function submit() {
       })
       if (!res.ok) throw new Error(t('form.errorUpdate'))
 
+      if (passwordManagerEnabled.value) {
+        await saveWebsite(props.binding!.id, headers)
+      }
+
       if (newContactEmail.value.trim()) {
         const contactRes = await apiFetch('/api/v1/contacts', {
           method: 'POST',
@@ -262,16 +378,8 @@ async function submit() {
         if (!contactRes.ok) throw new Error(t('form.errorAddContact'))
       }
 
-      if (password.value) {
-        const pwRes = await apiFetch('/gapi/passwords/proxy-binding', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            proxy_binding_id: props.binding!.id,
-            password: password.value,
-          }),
-        })
-        if (!pwRes.ok) throw new Error(t('form.errorSavePassword'))
+      if (passwordManagerEnabled.value) {
+        await savePassword(props.binding!.id, headers)
       }
     }
     else {
@@ -293,6 +401,13 @@ async function submit() {
         }),
       })
       if (!res.ok) throw new Error(t('form.errorCreate'))
+
+      const created = await res.json() as { data?: { id?: string } }
+      const createdId = created.data?.id
+      if (createdId && passwordManagerEnabled.value) {
+        await saveWebsite(createdId, headers)
+        await savePassword(createdId, headers)
+      }
     }
 
     emit('saved', props.binding?.id)
@@ -307,7 +422,12 @@ async function submit() {
 </script>
 
 <template>
-  <form @submit.prevent="submit">
+  <form
+    data-1p-ignore
+    data-bwignore
+    data-form-type="other"
+    @submit.prevent="submit"
+  >
     <h2>{{ isEdit ? t('form.editTitle') : t('form.newTitle') }}</h2>
 
     <div v-if="isEdit" class="field">
@@ -483,32 +603,90 @@ async function submit() {
         />
         <button
           type="button"
+          class="action-icon-btn"
           :disabled="!newContactEmail.trim()"
+          :title="t('form.addContact')"
+          :aria-label="t('form.addContact')"
           @click="addToPending"
         >
-          {{ t('form.addContact') }}
+          <Plus :size="16" />
         </button>
       </div>
       <p v-if="contactsError" class="error">{{ contactsError }}</p>
     </div>
 
-    <div v-if="isEdit" class="field">
+    <div v-if="passwordManagerEnabled" class="field">
+      <label for="website_url">{{ t('form.websiteUrl') }}</label>
+      <div class="pw-row">
+        <input
+          id="website_url"
+          v-model="websiteUrl"
+          type="text"
+          class="pw-input"
+          inputmode="url"
+          autocomplete="url"
+          :placeholder="t('form.websitePlaceholder')"
+        />
+        <button
+          v-if="websiteHref"
+          type="button"
+          class="pw-icon-btn"
+          :title="t('form.openWebsite')"
+          :aria-label="t('form.openWebsite')"
+          @click="openWebsite"
+        >
+          <ExternalLink :size="16" />
+        </button>
+      </div>
+      <p v-if="passwordManagerLoading" class="helper-text">{{ t('form.loadingPasswordManager') }}</p>
+      <p v-else-if="passwordManagerError" class="error">{{ passwordManagerError }}</p>
+    </div>
+
+    <div v-if="passwordManagerEnabled" class="field">
       <label>{{ t('form.password') }}</label>
       <div class="pw-row">
         <input
           v-model="password"
           :type="showPassword ? 'text' : 'password'"
           class="pw-input"
-          autocomplete="new-password"
+          autocomplete="off"
+          data-1p-ignore
+          data-bwignore
+          data-lpignore="true"
+          data-form-type="other"
           :placeholder="t('form.passwordPlaceholder')"
         />
-        <button type="button" class="pw-toggle" @click="showPassword = !showPassword">
-          {{ showPassword ? t('form.hidePassword') : t('form.showPassword') }}
+        <button
+          type="button"
+          class="pw-icon-btn"
+          :title="showPassword ? t('form.hidePassword') : t('form.showPassword')"
+          :aria-label="showPassword ? t('form.hidePassword') : t('form.showPassword')"
+          @click="showPassword = !showPassword"
+        >
+          <EyeOff v-if="showPassword" :size="16" />
+          <Eye v-else :size="16" />
+        </button>
+        <button
+          v-if="password"
+          type="button"
+          class="pw-icon-btn"
+          :title="copiedPassword ? t('list.copied') : t('form.copyPassword')"
+          :aria-label="copiedPassword ? t('list.copied') : t('form.copyPassword')"
+          @click="copyPassword"
+        >
+          <Check v-if="copiedPassword" :size="16" />
+          <Copy v-else :size="16" />
         </button>
       </div>
       <div class="pw-generator">
-        <button type="button" class="pw-generate" @click="generatePassword">
-          {{ t('form.generatePassword') }}
+        <button
+          type="button"
+          class="pw-generate pw-generate-icon"
+          :title="t('form.generatePassword')"
+          :aria-label="t('form.generatePassword')"
+          @click="generatePassword"
+        >
+          <RefreshCw :size="16" />
         </button>
         <label class="pw-opt">
           {{ t('form.pwLength') }}
@@ -523,10 +701,24 @@ async function submit() {
     <p v-if="error" class="error">{{ error }}</p>
 
     <div class="actions">
-      <button type="submit" :disabled="loading">
-        {{ loading ? t('form.saving') : t('form.save') }}
+      <button
+        type="submit"
+        class="action-icon-btn action-primary"
+        :disabled="loading"
+        :title="loading ? t('form.saving') : t('form.save')"
+        :aria-label="loading ? t('form.saving') : t('form.save')"
+      >
+        <Save :size="16" />
       </button>
-      <button type="button" @click="emit('cancel')">{{ t('form.cancel') }}</button>
+      <button
+        type="button"
+        class="action-icon-btn"
+        :title="t('form.cancel')"
+        :aria-label="t('form.cancel')"
+        @click="emit('cancel')"
+      >
+        <X :size="16" />
+      </button>
     </div>
   </form>
 </template>
@@ -751,6 +943,12 @@ input:not(.combobox-input) {
   white-space: nowrap;
 }
 
+.helper-text {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
 @media (prefers-color-scheme: dark) {
   .tag {
     background: #312e81;
@@ -852,6 +1050,19 @@ button[type="button"] {
   font-size: 0.9rem;
   background: var(--color-border, #ddd);
   color: var(--color-text, #333);
+}
+
+.action-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  padding: 0;
+}
+
+.action-primary {
+  background: #4f46e5;
+  color: #fff;
 }
 
 button:disabled {
@@ -1068,15 +1279,22 @@ button.contact-copy {
   min-width: 0;
 }
 
-.pw-toggle {
-  padding: 0.35rem 0.7rem;
+.pw-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  padding: 0;
   border: 1px solid var(--color-border, #ccc);
   border-radius: 4px;
   background: var(--color-background-soft);
   color: var(--color-text);
-  font-size: 0.8rem;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.pw-icon-btn:hover {
+  background: var(--color-border, #ddd);
 }
 
 .pw-generator {
@@ -1100,6 +1318,14 @@ button.contact-copy {
 
 .pw-generate:hover {
   background: #4338ca;
+}
+
+.pw-generate-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  padding: 0;
 }
 
 .pw-opt {
