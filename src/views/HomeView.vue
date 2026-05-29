@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ContactList from '../components/ContactList.vue'
 import ProxyEmailForm from '../components/ProxyEmailForm.vue'
@@ -14,6 +14,8 @@ const { t } = useI18n()
 const auth = useAuthStore()
 const router = useRouter()
 const listRef = ref<InstanceType<typeof ProxyEmailList> | null>(null)
+const OVERLAY_HISTORY_KEY = 'pm-home-overlay'
+let syncingOverlayFromHistory = false
 
 // --- pull-to-refresh ---
 const PULL_THRESHOLD = 72
@@ -86,6 +88,84 @@ const deleteModal = ref<
   } | null
 >(null)
 
+const activeOverlay = computed<'form' | 'delete' | null>(() => {
+  if (formVisible.value) return 'form'
+  if (deleteModal.value) return 'delete'
+  return null
+})
+
+function hasOverlayHistoryEntry() {
+  return window.history.state?.[OVERLAY_HISTORY_KEY] != null
+}
+
+function pushOverlayHistory(overlay: 'form' | 'delete') {
+  window.history.pushState(
+    {
+      ...(window.history.state ?? {}),
+      [OVERLAY_HISTORY_KEY]: overlay,
+    },
+    '',
+    window.location.href,
+  )
+}
+
+function replaceOverlayHistory(overlay: 'form' | 'delete') {
+  window.history.replaceState(
+    {
+      ...(window.history.state ?? {}),
+      [OVERLAY_HISTORY_KEY]: overlay,
+    },
+    '',
+    window.location.href,
+  )
+}
+
+function closeActiveOverlay() {
+  if (formVisible.value) {
+    formVisible.value = false
+    editingBinding.value = undefined
+  }
+  if (deleteModal.value) {
+    deleteModal.value = null
+  }
+}
+
+function onOverlayPopState() {
+  syncingOverlayFromHistory = true
+  closeActiveOverlay()
+}
+
+watch(activeOverlay, (nextOverlay, previousOverlay) => {
+  if (typeof window === 'undefined') return
+
+  if (syncingOverlayFromHistory) {
+    syncingOverlayFromHistory = false
+    return
+  }
+
+  if (!previousOverlay && nextOverlay) {
+    pushOverlayHistory(nextOverlay)
+    return
+  }
+
+  if (previousOverlay && nextOverlay) {
+    replaceOverlayHistory(nextOverlay)
+    return
+  }
+
+  if (previousOverlay && !nextOverlay && hasOverlayHistoryEntry()) {
+    window.history.back()
+  }
+})
+
+onMounted(() => {
+  window.addEventListener('popstate', onOverlayPopState)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('popstate', onOverlayPopState)
+})
+
 function onDelete(binding: ProxyBinding) {
   deleteModal.value = {
     binding,
@@ -120,14 +200,12 @@ async function confirmDelete() {
 }
 
 function onSaved(savedId?: string) {
-  formVisible.value = false
-  editingBinding.value = undefined
+  closeActiveOverlay()
   listRef.value?.fetchProxyBindings({ background: true, highlightId: savedId })
 }
 
 function onCancel() {
-  formVisible.value = false
-  editingBinding.value = undefined
+  closeActiveOverlay()
 }
 
 function logout() {
@@ -223,7 +301,7 @@ function logout() {
       <div
         v-if="deleteModal"
         class="modal-backdrop"
-        @click.self="deleteModal = null"
+        @click.self="closeActiveOverlay"
       >
         <div
           class="modal"
@@ -250,7 +328,7 @@ function logout() {
             <button
               class="btn-cancel"
               :disabled="deleteModal.deleting"
-              @click="deleteModal = null"
+              @click="closeActiveOverlay"
             >
               {{ t('delete.cancel') }}
             </button>
