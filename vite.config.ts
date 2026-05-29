@@ -46,11 +46,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': { target: 'https://proxiedmail.com', changeOrigin: true, followRedirects: true },
+      '/gapi': { target: 'https://proxiedmail.com', changeOrigin: true, followRedirects: true },
     },
   },
   preview: {
     proxy: {
       '/api': { target: 'https://proxiedmail.com', changeOrigin: true, followRedirects: true },
+      '/gapi': { target: 'https://proxiedmail.com', changeOrigin: true, followRedirects: true },
     },
   },
 })

@@ -52,6 +52,7 @@
     "pendingContact": "in afwachting",
     "errorFetchContacts": "Ophalen van contacten mislukt",
     "errorAddContact": "Toevoegen van contact mislukt"
+    ,"errorFetchDomains": "Beschikbare domeinen laden mislukt"
   },
   "contacts": {
     "empty": "Nog geen contacten.",

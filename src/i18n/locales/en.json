@@ -52,6 +52,7 @@
     "pendingContact": "pending",
     "errorFetchContacts": "Failed to fetch contacts",
     "errorAddContact": "Failed to add contact"
+    ,"errorFetchDomains": "Failed to load available domains"
   },
   "contacts": {
     "empty": "No contacts yet.",

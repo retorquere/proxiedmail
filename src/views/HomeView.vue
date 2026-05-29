@@ -245,12 +245,20 @@ function logout() {
     <header class="page-header">
       <h1>{{ t('app.name') }}</h1>
       <div class="header-actions">
-        <button v-if="!formVisible && activeTab === 'proxies'" @click="showCreate">
+        <button
+          v-if="!formVisible && activeTab === 'proxies'"
+          :disabled="!!listRef?.domainsError || listRef?.domainsLoading"
+          @click="showCreate"
+        >
           {{ t('home.newProxy') }}
         </button>
         <SettingsMenu @signout="logout" />
       </div>
     </header>
+
+    <p v-if="listRef?.domainsError" class="status error">
+      {{ listRef.domainsError }}
+    </p>
 
     <nav v-if="!formVisible" class="tabs">
       <button
@@ -270,7 +278,7 @@ function logout() {
     </nav>
 
     <ProxyEmailForm
-      v-if="formVisible"
+      v-if="formVisible && (listRef?.allDomains?.length ?? 0) > 0"
       :binding="editingBinding"
       :known-addresses="[
         ...new Set([

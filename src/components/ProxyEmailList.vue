@@ -12,6 +12,8 @@ const proxyBindings = ref<ProxyBinding[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const refreshingId = ref<string | null>(null)
+const domainsLoading = ref(false)
+const domainsError = ref<string | null>(null)
 
 async function fetchProxyBindings(
   opts?: { background?: boolean; highlightId?: string },
@@ -97,27 +99,42 @@ const allRealAddresses = computed(() => {
   return [...set].sort()
 })
 
-const ALWAYS_AVAILABLE_DOMAINS = ['pdxmail.net', 'pdxmail.com', 'proxiedmail.com']
-const customDomains = ref<string[]>([])
+const availableDomains = ref<string[]>([])
 
-async function fetchCustomDomains() {
+async function fetchAvailableDomains() {
+  domainsLoading.value = true
+  domainsError.value = null
   try {
-    const res = await apiFetch('/gapi/custom-domains?ignoreProcessing=1', {
+    const res = await apiFetch('/gapi/available-domains', {
       headers: { Token: localStorage.getItem('api_token') ?? '' },
     })
-    if (!res.ok) return
-    const data: Array<{ domain: string }> = await res.json()
-    customDomains.value = data.map(d => d.domain)
+    if (!res.ok) throw new Error(t('form.errorFetchDomains'))
+    const data: Array<string | { domain?: string | null }> = await res.json()
+    const normalizedDomains = [...new Set(
+      data
+        .map((entry) => {
+          if (typeof entry === 'string') return entry
+          return entry.domain ?? ''
+        })
+        .filter(domain => domain.length > 0),
+    )].sort()
+
+    if (normalizedDomains.length === 0) {
+      throw new Error(t('form.errorFetchDomains'))
+    }
+
+    availableDomains.value = normalizedDomains
   }
-  catch {
-    // silently ignore — always-available domains are still shown
+  catch (e) {
+    availableDomains.value = []
+    domainsError.value = e instanceof Error ? e.message : t('form.errorFetchDomains')
+  }
+  finally {
+    domainsLoading.value = false
   }
 }
 
-const allDomains = computed(() => {
-  const set = new Set<string>([...ALWAYS_AVAILABLE_DOMAINS, ...customDomains.value])
-  return [...set].sort()
-})
+const allDomains = computed(() => availableDomains.value)
 
 const togglingId = ref<string | null>(null)
 const copiedId = ref<string | null>(null)
@@ -179,9 +196,17 @@ async function toggleEnabled(binding: ProxyBinding) {
 
 onMounted(() => {
   fetchProxyBindings()
-  fetchCustomDomains()
+  fetchAvailableDomains()
 })
-defineExpose({ fetchProxyBindings, allRealAddresses, allDomains, refreshingId, proxyBindings })
+defineExpose({
+  fetchProxyBindings,
+  allRealAddresses,
+  allDomains,
+  domainsError,
+  domainsLoading,
+  refreshingId,
+  proxyBindings,
+})
 </script>
 
 <template>
