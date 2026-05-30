@@ -306,8 +306,70 @@ defineExpose({
     <div v-else-if="error" class="status error">{{ error }}</div>
     <div v-else-if="proxyBindings.length">
       <div v-for="section in enabledSections" :key="section.key" class="list-section">
-        <h3 v-if="section.label" class="section-label">{{ section.label }}</h3>
-        <ul class="list">
+        <template v-if="section.label">
+          <details class="section-details" open>
+            <summary class="section-summary">
+              <span class="section-label">{{ section.label }}</span>
+              <span class="section-count">{{ section.bindings.length }}</span>
+            </summary>
+            <ul class="list">
+              <li v-for="binding in section.bindings" :key="binding.id" class="item">
+                <div class="item-main">
+                  <span class="proxy-address">{{ binding.proxy_address }}</span>
+                  <span v-if="getDisplayDescription(binding.description)" class="description">{{
+                    getDisplayDescription(binding.description)
+                  }}</span>
+                </div>
+                <div class="item-meta">
+                  <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
+                  <span v-if="binding.received_emails" class="received">{{
+                      t('list.received', { count: binding.received_emails })
+                    }}</span>
+                </div>
+                <div class="item-actions">
+                  <button
+                    class="btn-icon btn-copy"
+                    :class="{ copied: copiedId === binding.id }"
+                    :title="copiedId === binding.id ? t('list.copied') : t('list.copyAddress')"
+                    @click="copyAddress(binding)"
+                  >
+                    <Copy v-if="copiedId !== binding.id" :size="16" />
+                    <Check v-else :size="16" />
+                  </button>
+                  <button
+                    class="btn-toggle"
+                    :class="{ enabled: isEnabled(binding) }"
+                    :disabled="togglingId === binding.id"
+                    :aria-label="isEnabled(binding) ? t('list.disable') : t('list.enable')"
+                    :title="isEnabled(binding) ? t('list.disable') : t('list.enable')"
+                    @click="toggleEnabled(binding)"
+                  >
+                    <span class="toggle-track">
+                      <span class="toggle-thumb" />
+                    </span>
+                  </button>
+                  <button
+                    class="btn-icon btn-edit"
+                    :disabled="refreshingId === binding.id"
+                    :style="refreshingId === binding.id ? 'opacity:0.35;cursor:not-allowed' : ''"
+                    :title="t('list.edit')"
+                    @click="$emit('edit', binding)"
+                  >
+                    <SquarePen :size="16" />
+                  </button>
+                  <button
+                    class="btn-icon btn-delete"
+                    :title="t('list.delete')"
+                    @click="$emit('delete', binding)"
+                  >
+                    <Trash2 :size="16" />
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </details>
+        </template>
+        <ul v-else class="list">
           <li v-for="binding in section.bindings" :key="binding.id" class="item">
             <div class="item-main">
               <span class="proxy-address">{{ binding.proxy_address }}</span>
@@ -369,8 +431,74 @@ defineExpose({
           {{ t('list.disabled', { count: disabledBindings.length }) }}
         </summary>
         <div v-for="section in disabledSections" :key="section.key" class="list-section">
-          <h3 v-if="section.label" class="section-label">{{ section.label }}</h3>
-          <ul class="list disabled-list">
+          <template v-if="section.label">
+            <details class="section-details" open>
+              <summary class="section-summary">
+                <span class="section-label">{{ section.label }}</span>
+                <span class="section-count">{{ section.bindings.length }}</span>
+              </summary>
+              <ul class="list disabled-list">
+                <li
+                  v-for="binding in section.bindings"
+                  :key="binding.id"
+                  class="item item-disabled"
+                >
+                  <div class="item-main">
+                    <span class="proxy-address">{{ binding.proxy_address }}</span>
+                    <span v-if="getDisplayDescription(binding.description)" class="description">{{
+                      getDisplayDescription(binding.description)
+                    }}</span>
+                  </div>
+                  <div class="item-meta">
+                    <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
+                    <span v-if="binding.received_emails" class="received">{{
+                        t('list.received', { count: binding.received_emails })
+                      }}</span>
+                  </div>
+                  <div class="item-actions">
+                    <button
+                      class="btn-icon btn-copy"
+                      :class="{ copied: copiedId === binding.id }"
+                      :title="copiedId === binding.id ? t('list.copied') : t('list.copyAddress')"
+                      @click="copyAddress(binding)"
+                    >
+                      <Copy v-if="copiedId !== binding.id" :size="16" />
+                      <Check v-else :size="16" />
+                    </button>
+                    <button
+                      class="btn-toggle"
+                      :class="{ enabled: isEnabled(binding) }"
+                      :disabled="togglingId === binding.id"
+                      :aria-label="isEnabled(binding) ? t('list.disable') : t('list.enable')"
+                      :title="isEnabled(binding) ? t('list.disable') : t('list.enable')"
+                      @click="toggleEnabled(binding)"
+                    >
+                      <span class="toggle-track">
+                        <span class="toggle-thumb" />
+                      </span>
+                    </button>
+                    <button
+                      class="btn-icon btn-edit"
+                      :disabled="refreshingId === binding.id"
+                      :style="refreshingId === binding.id ? 'opacity:0.35;cursor:not-allowed' : ''"
+                      :title="t('list.edit')"
+                      @click="$emit('edit', binding)"
+                    >
+                      <SquarePen :size="16" />
+                    </button>
+                    <button
+                      class="btn-icon btn-delete"
+                      :title="t('list.delete')"
+                      @click="$emit('delete', binding)"
+                    >
+                      <Trash2 :size="16" />
+                    </button>
+                  </div>
+                </li>
+              </ul>
+            </details>
+          </template>
+          <ul v-else class="list disabled-list">
             <li
               v-for="binding in section.bindings"
               :key="binding.id"
@@ -483,14 +611,38 @@ defineExpose({
   margin-top: 1rem;
 }
 
-.section-label {
+.section-details {
+  margin: 0;
+}
+
+.section-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin: 0 0 0.5rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.section-summary::-webkit-details-marker {
+  display: none;
+}
+
+.section-label {
+  margin: 0;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-text);
   opacity: 0.7;
+}
+
+.section-count {
+  font-size: 0.75rem;
+  color: var(--color-text);
+  opacity: 0.55;
 }
 
 .item {
