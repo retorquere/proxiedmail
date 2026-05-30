@@ -8,6 +8,12 @@ import { apiFetch } from '../utils/api'
 
 const { t } = useI18n()
 
+interface BindingSection {
+  key: string
+  label: string | null
+  bindings: ProxyBinding[]
+}
+
 const proxyBindings = ref<ProxyBinding[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -73,6 +79,72 @@ async function fetchProxyBindings(
 
 const searchQuery = ref('')
 
+const labelPattern = /(^|\s)#([A-Za-z0-9_-]+)/g
+
+function getBindingLabels(description?: string): Array<{ key: string; label: string }> {
+  const seen = new Set<string>()
+  const labels: Array<{ key: string; label: string }> = []
+
+  for (const match of (description ?? '').matchAll(labelPattern)) {
+    const label = match[2]
+    if (!label) continue
+    const key = label.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    labels.push({ key, label })
+  }
+
+  return labels
+}
+
+function getDisplayDescription(description?: string): string {
+  return (description ?? '')
+    .replace(labelPattern, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function createBindingSections(bindings: ProxyBinding[]): BindingSection[] {
+  const unlabeled: ProxyBinding[] = []
+  const labeledSections = new Map<string, BindingSection>()
+
+  for (const binding of bindings) {
+    const labels = getBindingLabels(binding.description)
+    if (labels.length === 0) {
+      unlabeled.push(binding)
+      continue
+    }
+
+    for (const label of labels) {
+      const existingSection = labeledSections.get(label.key)
+      if (existingSection) {
+        existingSection.bindings.push(binding)
+        continue
+      }
+
+      labeledSections.set(label.key, {
+        key: label.key,
+        label: label.label,
+        bindings: [binding],
+      })
+    }
+  }
+
+  const sections = [...labeledSections.values()].sort((left, right) =>
+    (left.label ?? '').localeCompare(right.label ?? '', undefined, { sensitivity: 'base' }),
+  )
+
+  if (unlabeled.length > 0) {
+    sections.unshift({
+      key: '__unlabeled__',
+      label: null,
+      bindings: unlabeled,
+    })
+  }
+
+  return sections
+}
+
 function matchesSearch(b: ProxyBinding): boolean {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return true
@@ -88,6 +160,8 @@ const enabledBindings = computed(() =>
 const disabledBindings = computed(() =>
   proxyBindings.value.filter(b => !isEnabled(b) && matchesSearch(b))
 )
+const enabledSections = computed(() => createBindingSections(enabledBindings.value))
+const disabledSections = computed(() => createBindingSections(disabledBindings.value))
 
 const allRealAddresses = computed(() => {
   const set = new Set<string>()
@@ -222,76 +296,14 @@ defineExpose({
     <div v-if="loading" class="status">{{ t('list.loading') }}</div>
     <div v-else-if="error" class="status error">{{ error }}</div>
     <div v-else-if="proxyBindings.length">
-      <ul class="list">
-        <li v-for="binding in enabledBindings" :key="binding.id" class="item">
-          <div class="item-main">
-            <span class="proxy-address">{{ binding.proxy_address }}</span>
-            <span v-if="binding.description" class="description">{{
-              binding.description
-            }}</span>
-          </div>
-          <div class="item-meta">
-            <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
-            <span v-if="binding.received_emails" class="received">{{
-                t('list.received', { count: binding.received_emails })
-              }}</span>
-          </div>
-          <div class="item-actions">
-            <button
-              class="btn-icon btn-copy"
-              :class="{ copied: copiedId === binding.id }"
-              :title="copiedId === binding.id ? t('list.copied') : t('list.copyAddress')"
-              @click="copyAddress(binding)"
-            >
-              <Copy v-if="copiedId !== binding.id" :size="16" />
-              <Check v-else :size="16" />
-            </button>
-            <button
-              class="btn-toggle"
-              :class="{ enabled: isEnabled(binding) }"
-              :disabled="togglingId === binding.id"
-              :aria-label="isEnabled(binding) ? t('list.disable') : t('list.enable')"
-              :title="isEnabled(binding) ? t('list.disable') : t('list.enable')"
-              @click="toggleEnabled(binding)"
-            >
-              <span class="toggle-track">
-                <span class="toggle-thumb" />
-              </span>
-            </button>
-            <button
-              class="btn-icon btn-edit"
-              :disabled="refreshingId === binding.id"
-              :style="refreshingId === binding.id ? 'opacity:0.35;cursor:not-allowed' : ''"
-              :title="t('list.edit')"
-              @click="$emit('edit', binding)"
-            >
-              <SquarePen :size="16" />
-            </button>
-            <button
-              class="btn-icon btn-delete"
-              :title="t('list.delete')"
-              @click="$emit('delete', binding)"
-            >
-              <Trash2 :size="16" />
-            </button>
-          </div>
-        </li>
-      </ul>
-
-      <details v-if="disabledBindings.length" class="disabled-section" :open="!!searchQuery.trim()">
-        <summary class="disabled-summary">
-          {{ t('list.disabled', { count: disabledBindings.length }) }}
-        </summary>
-        <ul class="list disabled-list">
-          <li
-            v-for="binding in disabledBindings"
-            :key="binding.id"
-            class="item item-disabled"
-          >
+      <div v-for="section in enabledSections" :key="section.key" class="list-section">
+        <h3 v-if="section.label" class="section-label">{{ section.label }}</h3>
+        <ul class="list">
+          <li v-for="binding in section.bindings" :key="binding.id" class="item">
             <div class="item-main">
               <span class="proxy-address">{{ binding.proxy_address }}</span>
-              <span v-if="binding.description" class="description">{{
-                binding.description
+              <span v-if="getDisplayDescription(binding.description)" class="description">{{
+                getDisplayDescription(binding.description)
               }}</span>
             </div>
             <div class="item-meta">
@@ -341,6 +353,74 @@ defineExpose({
             </div>
           </li>
         </ul>
+      </div>
+
+      <details v-if="disabledBindings.length" class="disabled-section" :open="!!searchQuery.trim()">
+        <summary class="disabled-summary">
+          {{ t('list.disabled', { count: disabledBindings.length }) }}
+        </summary>
+        <div v-for="section in disabledSections" :key="section.key" class="list-section">
+          <h3 v-if="section.label" class="section-label">{{ section.label }}</h3>
+          <ul class="list disabled-list">
+            <li
+              v-for="binding in section.bindings"
+              :key="binding.id"
+              class="item item-disabled"
+            >
+              <div class="item-main">
+                <span class="proxy-address">{{ binding.proxy_address }}</span>
+                <span v-if="getDisplayDescription(binding.description)" class="description">{{
+                  getDisplayDescription(binding.description)
+                }}</span>
+              </div>
+              <div class="item-meta">
+                <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
+                <span v-if="binding.received_emails" class="received">{{
+                    t('list.received', { count: binding.received_emails })
+                  }}</span>
+              </div>
+              <div class="item-actions">
+                <button
+                  class="btn-icon btn-copy"
+                  :class="{ copied: copiedId === binding.id }"
+                  :title="copiedId === binding.id ? t('list.copied') : t('list.copyAddress')"
+                  @click="copyAddress(binding)"
+                >
+                  <Copy v-if="copiedId !== binding.id" :size="16" />
+                  <Check v-else :size="16" />
+                </button>
+                <button
+                  class="btn-toggle"
+                  :class="{ enabled: isEnabled(binding) }"
+                  :disabled="togglingId === binding.id"
+                  :aria-label="isEnabled(binding) ? t('list.disable') : t('list.enable')"
+                  :title="isEnabled(binding) ? t('list.disable') : t('list.enable')"
+                  @click="toggleEnabled(binding)"
+                >
+                  <span class="toggle-track">
+                    <span class="toggle-thumb" />
+                  </span>
+                </button>
+                <button
+                  class="btn-icon btn-edit"
+                  :disabled="refreshingId === binding.id"
+                  :style="refreshingId === binding.id ? 'opacity:0.35;cursor:not-allowed' : ''"
+                  :title="t('list.edit')"
+                  @click="$emit('edit', binding)"
+                >
+                  <SquarePen :size="16" />
+                </button>
+                <button
+                  class="btn-icon btn-delete"
+                  :title="t('list.delete')"
+                  @click="$emit('delete', binding)"
+                >
+                  <Trash2 :size="16" />
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
       </details>
     </div>
     <div v-else-if="searchQuery.trim()" class="status">{{ t('list.noResults', { query: searchQuery.trim() }) }}</div>
@@ -388,6 +468,20 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.list-section + .list-section {
+  margin-top: 1rem;
+}
+
+.section-label {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  opacity: 0.7;
 }
 
 .item {
