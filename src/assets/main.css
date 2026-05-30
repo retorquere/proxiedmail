@@ -1,15 +1,106 @@
 @import "./base.css";
 
 #app {
+  min-height: 100vh;
+  font-weight: normal;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-shell__content {
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
-  font-weight: normal;
+}
+
+.pwa-banner {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-background-soft) 92%, #1f8f5f 8%);
+  backdrop-filter: blur(12px);
+}
+
+.pwa-banner__copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.pwa-banner__title {
+  font-weight: 600;
+  color: var(--color-heading);
+}
+
+.pwa-banner__message {
+  color: var(--color-text);
+}
+
+.pwa-banner__message--error {
+  color: #a64b00;
+}
+
+.pwa-banner__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.75rem;
+}
+
+.pwa-banner__button {
+  border: 1px solid var(--color-border-hover);
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pwa-banner__button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.pwa-banner__button--primary {
+  border-color: #1f8f5f;
+  background: #1f8f5f;
+  color: #ffffff;
 }
 
 @media (hover: hover) {
   a:hover {
     background-color: hsla(160, 100%, 37%, 0.2);
+  }
+
+  .pwa-banner__button:hover {
+    border-color: var(--color-text);
+  }
+
+  .pwa-banner__button--primary:hover {
+    border-color: #166746;
+    background: #166746;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-shell__content {
+    padding: 1rem;
+  }
+
+  .pwa-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pwa-banner__actions {
+    justify-content: flex-end;
   }
 }
 
@@ -20,8 +111,10 @@
   }
 
   #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
+    width: 100%;
+  }
+
+  .app-shell__content {
+    padding: 0 2rem 2rem;
   }
 }
