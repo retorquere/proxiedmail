@@ -64,6 +64,23 @@ npx wrangler pages dev dist
 npm run type-check
 ```
 
+### Tests
+
+```sh
+npm run test:unit
+npm run test:e2e
+```
+
+`test:unit` runs Vitest tests from `tests/unit/`.
+
+`test:e2e` runs Playwright tests from `tests/e2e/` and starts the Vite dev server automatically.
+
+If Playwright was just installed or upgraded, install the matching browser binary before running e2e tests:
+
+```sh
+npx playwright install chromium
+```
+
 ### Lint
 
 ```sh
