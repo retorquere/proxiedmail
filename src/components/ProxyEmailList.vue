@@ -7,6 +7,11 @@ import type { ProxyBinding } from '../types/proxy-binding'
 import { apiFetch } from '../utils/api'
 
 const { t } = useI18n()
+defineEmits<{
+  (e: 'open-proxy', binding: ProxyBinding): void
+  (e: 'edit', binding: ProxyBinding): void
+  (e: 'delete', binding: ProxyBinding): void
+}>()
 
 interface BindingSection {
   key: string
@@ -314,12 +319,12 @@ defineExpose({
             </summary>
             <ul class="list">
               <li v-for="binding in section.bindings" :key="binding.id" class="item">
-                <div class="item-main">
+                <button class="item-main proxy-open" @click="$emit('open-proxy', binding)">
                   <span class="proxy-address">{{ binding.proxy_address }}</span>
                   <span v-if="getDisplayDescription(binding.description)" class="description">{{
                     getDisplayDescription(binding.description)
                   }}</span>
-                </div>
+                </button>
                 <div class="item-meta">
                   <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
                   <span v-if="binding.received_emails" class="received">{{
@@ -371,12 +376,12 @@ defineExpose({
         </template>
         <ul v-else class="list">
           <li v-for="binding in section.bindings" :key="binding.id" class="item">
-            <div class="item-main">
+            <button class="item-main proxy-open" @click="$emit('open-proxy', binding)">
               <span class="proxy-address">{{ binding.proxy_address }}</span>
               <span v-if="getDisplayDescription(binding.description)" class="description">{{
                 getDisplayDescription(binding.description)
               }}</span>
-            </div>
+            </button>
             <div class="item-meta">
               <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
               <span v-if="binding.received_emails" class="received">{{
@@ -443,12 +448,12 @@ defineExpose({
                   :key="binding.id"
                   class="item item-disabled"
                 >
-                  <div class="item-main">
+                  <button class="item-main proxy-open" @click="$emit('open-proxy', binding)">
                     <span class="proxy-address">{{ binding.proxy_address }}</span>
                     <span v-if="getDisplayDescription(binding.description)" class="description">{{
                       getDisplayDescription(binding.description)
                     }}</span>
-                  </div>
+                  </button>
                   <div class="item-meta">
                     <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
                     <span v-if="binding.received_emails" class="received">{{
@@ -504,12 +509,12 @@ defineExpose({
               :key="binding.id"
               class="item item-disabled"
             >
-              <div class="item-main">
+              <button class="item-main proxy-open" @click="$emit('open-proxy', binding)">
                 <span class="proxy-address">{{ binding.proxy_address }}</span>
                 <span v-if="getDisplayDescription(binding.description)" class="description">{{
                   getDisplayDescription(binding.description)
                 }}</span>
-              </div>
+              </button>
               <div class="item-meta">
                 <span v-if="binding.is_browsable" class="badge">{{ t('list.browsable') }}</span>
                 <span v-if="binding.received_emails" class="received">{{
@@ -661,6 +666,12 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
+}
+
+.proxy-open {
+  width: 100%;
+  padding: 0;
+  text-align: left;
 }
 
 .proxy-address {

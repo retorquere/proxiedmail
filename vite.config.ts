@@ -55,8 +55,4 @@ export default defineConfig({
       '/gapi': { target: 'https://proxiedmail.com', changeOrigin: true, followRedirects: true },
     },
   },
-  test: {
-    environment: 'node',
-    include: ['tests/unit/**/*.spec.ts'],
-  },
 })

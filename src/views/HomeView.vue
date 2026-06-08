@@ -75,8 +75,11 @@ function onEdit(binding: ProxyBinding) {
 }
 
 function onOpenProxy(binding: ProxyBinding) {
-  activeTab.value = 'proxies'
-  onEdit(binding)
+  router.push({
+    name: 'proxy-address',
+    params: { id: binding.id },
+    query: { address: binding.proxy_address },
+  })
 }
 
 const deleteModal = ref<
@@ -294,6 +297,7 @@ function logout() {
     <ProxyEmailList
       v-show="!formVisible && activeTab === 'proxies'"
       ref="listRef"
+      @open-proxy="onOpenProxy"
       @edit="onEdit"
       @delete="onDelete"
     />
